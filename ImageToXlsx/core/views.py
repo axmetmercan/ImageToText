@@ -16,14 +16,9 @@ class FileUploadViewv2(FormView):
     success_url = reverse_lazy("thanks")
     
 
-    def get_os_type(self):
-        if sys.platform.startswith('win'):
-            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-       
-
 
     def read_img(self, img):
-        self.get_os_type()
+        pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
         cropped_image = np.asarray(bytearray(img.read()), dtype=np.uint8)
 
         cropped_image = cv2.imdecode(cropped_image, cv2.IMREAD_COLOR)
