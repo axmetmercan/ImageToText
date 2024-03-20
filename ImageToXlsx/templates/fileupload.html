@@ -1,6 +1,6 @@
 {% extends 'base.html' %} {% block content %}
 <form method="post" enctype="multipart/form-data">
   {% csrf_token %} {{ form.as_p }}
-  <input type="submit" value="Send file" />
+  <input class="button-6" type="submit" value="Send Your Images" />
 </form>
 {% endblock %}

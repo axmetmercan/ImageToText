@@ -4,223 +4,90 @@ from django.views import View
 from django.views.generic.edit import FormView
 from core.forms import ImageUploadForm
 from io import BytesIO
-import requests
 import pandas as pd
 import cv2
 import pytesseract
 import numpy as np
-import os
 
-
-
-class MyView(View):
-    def get(self, request, *args, **kwargs):
-        return HttpResponse("Dosyanız Hazırlanıyor...")
 
 class FileUploadViewv2(FormView):
     template_name = "fileupload.html"
     form_class = ImageUploadForm
     success_url = reverse_lazy("thanks")
 
+
+
+    def read_img(self, img):
+        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+        cropped_image = np.asarray(bytearray(img.read()), dtype=np.uint8)
+
+        cropped_image = cv2.imdecode(cropped_image, cv2.IMREAD_COLOR)
+
+        # Read the cropped image
+        # cropped_image = cv2.imread(img)
+        # Check if current image width less then 1000
+        prev_res = cropped_image.shape[0]
+        # Check if current image width less then 1000
+        cropped_image = cv2.resize(cropped_image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        if (prev_res>1000):
+            canvas_height = max(cropped_image.shape[0], cropped_image.shape[0] + round(
+                cropped_image.shape[0] * 10 / 100))  # Adjust as needed, ensuring it's large enough
+            canvas_width = max(cropped_image.shape[1], cropped_image.shape[1] + round(
+                cropped_image.shape[1] * 10 / 100))  # Adjust as needed, ensuring it's large enough
+
+        # Otherwise
+        else:
+            canvas_height = max(cropped_image.shape[0], 3000)  # Adjust as needed, ensuring it's large enough
+            canvas_width = max(cropped_image.shape[1], 2700)  # Adjust as needed, ensuring it's large enough
+
+
+        # Create a white canvas
+        canvas = np.ones((canvas_height, canvas_width, 3), dtype=np.uint8) * 255
+
+        # Calculate the offset for placing the cropped image in the center of the canvas
+        offset_y = (canvas_height - cropped_image.shape[0]) // 2
+        offset_x = (canvas_width - cropped_image.shape[1]) // 2
+
+        # Place the cropped image onto the canvas
+        canvas[offset_y:offset_y + cropped_image.shape[0], offset_x:offset_x + cropped_image.shape[1]] = np.copy(cropped_image)
+
+
+        img = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
+        kernel = np.ones((1, 1), np.uint8)
+        img = cv2.dilate(img, kernel, iterations=1)
+        img = cv2.erode(img, kernel, iterations=1)
+        img = cv2.threshold(cv2.medianBlur(img, 3), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+
+        # To see modified image
+        # cv2.imwrite("asd.jpg", img)
+
+        text = pytesseract.image_to_string(img)
+
+        return text
     
-
-
-    def form_valid(self, form):
-        result_file = []
-
-
-        def image_to_text(image_file):
-            img_data = image_file.read()
-            pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
-
-            # Use OpenCV to read the image
-            # replace 'test.png' with your image file
-            nparr = np.frombuffer(img_data, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if (img is None):
-                print('hatra var')
-
-            # Convert the image to gray scale
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-            # Use pytesseract to convert the image data to text
-            text = pytesseract.image_to_string(gray)
-
-            # Print the text
-            text = text.split("\n")
-            for index, item in enumerate(text):
-                if len(item) <= 4:
-                    text.pop(index)
-            return text
-
-
-        for file in self.request.FILES.getlist('files_field'):
-            result_file += (image_to_text(file))
-        
-
-        all_address_list = []
-        for index, item in enumerate(result_file):
-            item = item.split(" ")
-            # print(item[-1], type(item[:-1]))
-
-            #Deletes the city names
-            try :
-                item[-1] = int(item[-1])
-                item = item
-                
-            except:
-               
-                item= item[:-1]
-            try:
-                address = ""
-                for i in item[:-1]:
-                    address += " "+i
-                item = [address.lstrip(),item[-1] ]
-            except:
-                pass
-
-            all_address_list.append(item)
-
-        #Deletes unreaded elements and table head
-        for index, i in enumerate( all_address_list):
-            if len(i) <=0:
-                all_address_list.pop(index)
-            
-            if str("street").upper() in str(i).upper():
-                all_address_list.pop(index)
-
-            # try:
-            #     all_address_list[i][-1] = int( all_address_list[i][-1])
-            # except:
-            #     pass
-        
-
-        # for index, i in enumerate( all_address_list):
-        #     if (type(i[-1]) != int):
-
-        #         all_address_list.pop(index)
-
-        def save_to_excell(list):
-
-            columns = ['Address Line 1', 'Address Line 2','City','State','Postal Code','Extra info (Optional)','Add more columns if needed' ]
-
-            # Create an empty DataFrame with the defined columns
-            existing_data = pd.DataFrame(columns=columns)
-
-            # Assign new values to the existing columns
-            for index, adres in enumerate(list):
-                try:
-                    existing_data.at[index, 'Address Line 1'] = adres[0]  # Replace 'Column1' and new_value1 with your actual data
-                    # existing_data.at[index, 'City'] = "Geel"  # Replace 'Column2' and new_value2 with your actual data
-                    existing_data.at[index, 'Postal Code'] = int(adres[1])  # Replace 'Column2' and new_value2 with your actual data
-                except:
-                    pass
-
-
-            excel_buffer = BytesIO()
-            existing_data.to_excel(excel_buffer, index=False)
-            excel_buffer.seek(0)
-             #  Create an HTTP response with the Excel file as content
-            response = HttpResponse(excel_buffer, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-            # Set the content disposition to force the browser to download the fil
-            # Set the content disposition to force the browser to download the file
-            response['Content-Disposition'] = 'attachment; filename="processed_excel.xlsx"'
-            return response
-        
-        return save_to_excell(all_address_list)
-
-class FileUploadView(FormView):
-    template_name = "fileupload.html"
-    form_class = ImageUploadForm
-    success_url = reverse_lazy("thanks")
-
-    def form_valid(self, form):
-        api_url = 'https://api.api-ninjas.com/v1/imagetotext'
-        headers = {'X-Api-Key': os.environ.get("API_KEY")}
-        
-        result_file = []
-        for file in self.request.FILES.getlist('files_field'):
-            print(file.name)
-            uploaded_file = file
-
-            image_file_descriptor = uploaded_file
-            files = {'image': image_file_descriptor}
-            r = requests.post(api_url, files=files, headers=headers)
-            result_file = result_file + r.json()
-        
-        obj = AddressList(result_file)
-        obj.add_post_code("2440")
-        obj.CombineAdresses(obj.jsonData)
-        res_file = obj.save_to_excell()
-
+    def clean_empty_text(self, arr):
+        new_arr = []
+        for  item in arr:
+            if item != "":
+                new_arr.append(item)
+        return new_arr
     
+    def filter_post_codes(self, post_codes, address_list):
+        address_dict = dict()
+        for post_code in post_codes:
 
-        #  Create an HTTP response with the Excel file as content
-        response = HttpResponse(res_file, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            address_dict[post_code]=[]
 
-        # Set the content disposition to force the browser to download the file
-        response['Content-Disposition'] = 'attachment; filename="processed_excel.xlsx"'
+            for address in address_list:
+                if post_code in address:
+                    address = address.replace(post_code, "")
+                    address_dict[post_code].append(address)
+        return address_dict
 
-        return response
 
-    
 
-class AddressList(object):
-
-    def __init__(self, jsonData):
-        self.jsonData = jsonData
-        self.city_names = []
-        self.post_codes = []
-
-    def addCity(self, city):
-        self.city_names.append(str(city))
-        return self.city_names
-
-    def add_post_code(self, post_code):
-        self.post_codes.append(str(post_code))
-        return self.post_codes
-
-    def CombineAdresses(self, jsonList):
-        adresler = []
-
-        """
-        hepsini birleştir
-        şehir adlarını listeden sil
-        posta koduna göre split et elemanları
-        """
-        full_text = ""
-        for index, text in enumerate(jsonList):
-            if str(text['text']).upper() != "STREET".upper() and str(text['text']).upper() != "TOWN".upper():
-                full_text += text['text'] + " "
-
-        full_text = full_text.upper()
-        for city in self.city_names:
-            if str(city).upper() in full_text:
-                full_text = full_text.replace(city.upper(), "")
-
-        full_text = full_text.split(" ")
-
-        """
-        ikili array yap 
-        posta koduna ulaşana kadar iç araye ekle 
-        sonra yeni iç eray oluştur
-        """
-        for post in self.post_codes:
-            a = ""
-            for item in full_text:
-                if item != post:
-                    a = a + " " + item
-                if item == post:
-                    a = a.lstrip()
-                    adresler.append([a, post])
-                    a = ""
-
-     
-
-        return adresler
-
-    def save_to_excell(self):
+    def save_to_excell(self, a_dict):
 
         columns = ['Address Line 1', 'Address Line 2','City','State','Postal Code','Extra info (Optional)','Add more columns if needed' ]
 
@@ -228,13 +95,50 @@ class AddressList(object):
         existing_data = pd.DataFrame(columns=columns)
 
         # Assign new values to the existing columns
-        for index, adres in enumerate(self.CombineAdresses(self.jsonData)):
-            existing_data.at[index, 'Address Line 1'] = adres[0]  # Replace 'Column1' and new_value1 with your actual data
-            # existing_data.at[index, 'City'] = "Geel"  # Replace 'Column2' and new_value2 with your actual data
-            existing_data.at[index, 'Postal Code'] = int(adres[1])  # Replace 'Column2' and new_value2 with your actual data
+        for post_code in a_dict:
+            for index, adres in enumerate(a_dict[post_code]):
+                try:
+                    existing_data.at[index, 'Address Line 1'] = adres  # Replace 'Column1' and new_value1 with your actual data
+                    # existing_data.at[index, 'City'] = "Geel"  # Replace 'Column2' and new_value2 with your actual data
+                    existing_data.at[index, 'Postal Code'] = int(post_code)  # Replace 'Column2' and new_value2 with your actual data
+                except:
+                    pass
 
 
         excel_buffer = BytesIO()
         existing_data.to_excel(excel_buffer, index=False)
         excel_buffer.seek(0)
-        return excel_buffer
+            #  Create an HTTP response with the Excel file as content
+        response = HttpResponse(excel_buffer, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        # Set the content disposition to force the browser to download the fil
+        # Set the content disposition to force the browser to download the file
+        response['Content-Disposition'] = 'attachment; filename="processed_excel.xlsx"'
+        return response
+
+
+    def form_valid(self, form):
+        all_address_list = [1,2]
+        requested_files = self.request.FILES.getlist('files_field')
+        address_text = ""
+
+        # Accepts an image file and returns it as text
+
+        for file in self.request.FILES.getlist('files_field'):
+            # result_file += (self.read_img(file))
+
+            text_file = self.read_img(file)
+            address_text += "\n" + text_file
+
+        text_file = address_text.split("\n")
+        cleaned_file = self.clean_empty_text(text_file)
+        filtered_data = self.filter_post_codes(["2440","2450","4800","4710","4720"], cleaned_file)
+     
+        # print(filtered_data)       
+    
+        return self.save_to_excell(filtered_data)
+
+
+
+
+
