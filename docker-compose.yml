@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+  backend:
+    build: 
+      context: ./ImageToXlsx
+    container_name: ImageToExcel
+    command: gunicorn ImageToXlsx.wsgi:application --bind 0.0.0.0:8000
+    restart: always
+    volumes:
+      - ./ImageToXlsx:/app  # Adjusted volume mapping
+    ports:
+      - "8000:8000"
+
+  nginx:
+    build: 
+      context: ./nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    volumes:
+      - ./nginx:/app/static
+
+volumes:
+  data:
+  static:
