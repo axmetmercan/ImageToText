@@ -13,18 +13,27 @@ import sys
 class FileUploadViewv2(FormView):
     template_name = "fileupload.html"
     form_class = ImageUploadForm
-    success_url = reverse_lazy("thanks")
+    # success_url = reverse_lazy("thanks")
     
+
+    def get_os_type(self):
+        if sys.platform.startswith('linux'):
+           pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+        elif sys.platform.startswith('win'):
+            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        elif sys.platform.startswith('darwin'):
+            return 'Mac OS X'
+        else:
+            return 'Unknown'
 
 
     def read_img(self, img):
-        pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+        self.get_os_type()
         cropped_image = np.asarray(bytearray(img.read()), dtype=np.uint8)
 
         cropped_image = cv2.imdecode(cropped_image, cv2.IMREAD_COLOR)
 
-        # Read the cropped image
-        # cropped_image = cv2.imread(img)
+      
         # Check if current image width less then 1000
         prev_res = cropped_image.shape[0]
         # Check if current image width less then 1000
@@ -51,7 +60,7 @@ class FileUploadViewv2(FormView):
         # Place the cropped image onto the canvas
         canvas[offset_y:offset_y + cropped_image.shape[0], offset_x:offset_x + cropped_image.shape[1]] = np.copy(cropped_image)
 
-
+        # Prepare img to read with preprocessesing
         img = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
         kernel = np.ones((1, 1), np.uint8)
         img = cv2.dilate(img, kernel, iterations=1)
@@ -61,6 +70,7 @@ class FileUploadViewv2(FormView):
         # To see modified image
         # cv2.imwrite("asd.jpg", img)
 
+        # Read the img
         text = pytesseract.image_to_string(img)
 
         return text
@@ -112,7 +122,7 @@ class FileUploadViewv2(FormView):
 
         # Set the content disposition to force the browser to download the fil
         # Set the content disposition to force the browser to download the file
-        response['Content-Disposition'] = 'attachment; filename="processed_excel.xlsx"'
+        response['Content-Disposition'] = 'attachment; filename="address_list_excel.xlsx"'
         return response
 
 
@@ -134,7 +144,7 @@ class FileUploadViewv2(FormView):
         filtered_data = self.filter_post_codes(["2440","2450","4800","4710","4720"], cleaned_file)
      
         # print(filtered_data)       
-    
+        # Return the file 
         return self.save_to_excell(filtered_data)
 
 
